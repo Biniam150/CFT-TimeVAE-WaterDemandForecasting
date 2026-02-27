@@ -1,0 +1,10 @@
+tensorflow==2.9.0
+numpy==1.23.5
+pandas==2.2.3
+scikit-learn==1.6.1
+xgboost==3.0.2
+matplotlib==3.10.1
+seaborn==0.13.2
+tqdm==4.67.1
+joblib==1.4.2
+fastdtw==0.3.4
