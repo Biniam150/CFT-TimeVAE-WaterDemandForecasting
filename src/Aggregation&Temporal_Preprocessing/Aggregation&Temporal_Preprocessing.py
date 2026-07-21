@@ -150,14 +150,14 @@ def save_datasets_to_files(all_datasets: Dict, save_dir: str, split_name: str, f
 def main():
     # --- DYNAMIC PATHS FOR GITHUB ---
     try:
-        # If running as a script in a subfolder
-        root = Path(__file__).resolve().parent.parent
+        # This script is stored under src/Aggregation&Temporal_Preprocessing.
+        root = Path(__file__).resolve().parents[2]
     except NameError:
         # If running in Jupyter Notebook
         root = Path(os.getcwd()).resolve()
 
-    RAW_DATA_PATH = root / "data" / "raw" / "Good_Data.csv"
-    SAVE_BASE_DIR = root / "outputs"
+    RAW_DATA_PATH = root / "data" / "Processed_data" / "Good_Data.csv"
+    SAVE_BASE_DIR = root / "outputs" / "temporal_split_data"
 
     print(f"Working Directory: {root}")
     print(f"Input: {RAW_DATA_PATH}")
@@ -169,7 +169,7 @@ def main():
     train_df, val_df, test_df = create_temporal_splits_simple(df)
     
     
-    selected_level = [20] #rerun for new level 
+    selected_level = 20  # Rerun with a different aggregation level if needed.
     n_trials = 100 
 
     available_users = df["user key"].value_counts().index.tolist()
