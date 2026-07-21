@@ -1,71 +1,113 @@
-# Condtional Forcasting Time-VAE(CFT-TimeVAE) model for Water Demand Forcasting
-TimeVAE-based framework for generating synthetic water demand sequences and evaluating forecasting models across multiple aggregation levels. Includes preprocessing pipeline, conditional feature engineering, model training scripts, and reproducibility for all experiments.
-## 1.Overview
-This repository implements a Conditional Forecasting TimeVAE (CFT-TimeVAE) designed for:
+# Conditional Forecasting TimeVAE (CFT-VAE) for Water Demand Forecasting
 
-➡️ Synthetic water demand generation <br>
-➡️ Data augmentation for low-data forecasting <br>
-➡️ Improving forecasting accuracy at low–medium aggregation levels <br>
-➡️ Evaluating forecasting setups (real-only, synthetic-only, augmented)
+This repository provides a condtional TimeVAE-based framework for generating synthetic water-demand sequences and evaluating their usefulness for demand forecasting across multiple user-aggregation levels. It includes data preprocessing, conditional feature engineering, CFT-VAE and TimeVAE training, synthetic data generation, forecasting experiments, and statistical validation.
 
+## 1. Overview
 
-The pipeline supports 25 aggregation levels, multiple randomized trials, and 4 forecasting models (RandomForest, XGBoost, GradientBoosting, SVM).
+The Conditional Forecasting TimeVAE (CFT-VAE) framework is designed for:
 
-## 2 Repository Structure
-```plaintext
-your-project/
-│
-├── src/
-│   ├── Aggregation&Temporal_Preprocessing.py      # Aggregation + temporal split + feature engineering
-│   ├── CFT_TIMEVAE_Model_Definition.py            # Conditional Forecasting TimeVAE architecture
-│   ├── Model_Training.py                          # Training pipeline for TimeVAE (reconstruction + forecasting)
-│   ├── Forcasting_Experiment.py                   # Evaluation: baseline, synthetic-only, augmented forecasting
-│   └── Result&Visualization.py                    # Plotting, summary tables, comparison analysis
-│
-├── data/
-│   └── raw/
-│       └── Good_Data.csv                          # User-provided raw data file, # Large dataset (stored via Git LFS)
-│
-├── outputs/
-│   ├── temporal_split_data/                       # Preprocessed NPZ files for all aggregation levels
-│   ├── trained_models/                            # Saved TimeVAE model checkpoints + logs
-│   ├── synthetic_data/                            # Generated synthetic samples by level & trial
-│   ├── forecasting_results/                       # CSV results for forecasting experiments
-│   └── visualizations/                            # Figures, plots, histograms
-│
-├── .gitignore
-├── LICENSE
-├── requirements.txt                                # Dependencies for reproducibility
-└── README.md                                       # Main documentation
+- Synthetic water-demand data generation
+- Data augmentation for water-demand forecasting
+- Forecasting at different user-aggregation levels
+- Comparing CFT-VAE with the original TimeVAE
+- Evaluating real-only, synthetic-only, and augmented training scenarios
+- Assessing synthetic-data fidelity, robustness, and statistical significance
 
+The experimental pipeline supports 25 user-aggregation levels and multiple randomized trials. Forecasting performance is evaluated using six models:
+
+- Random Forest
+- XGBoost
+- Gradient Boosting
+- Support Vector Machine (SVM)
+- Long Short-Term Memory network (LSTM)
+- Temporal Convolutional Network (TCN)
+- 
+## 2. Repository Structure
+
+```text
+CFT-TimeVAE-WaterDemandForecasting/
+|
+|-- data/
+|   |-- raw/
+|   |   `-- swm_trialA_1K.csv
+|   |
+|   `-- Processed_data/
+|       |-- Good_Data.csv
+|       |-- user_frequency_distribution.py
+|       `-- Fig2.png
+|
+|-- src/
+|   |-- Aggregation&Temporal_Preprocessing/
+|   |   `-- Aggregation&Temporal_Preprocessing.py
+|   |
+|   |-- CFT-VAE/
+|   |   |-- Model_definition.py
+|   |   |-- Trainning.py
+|   |   |-- Forcasting.py
+|   |   `-- forecasting_lstm_tcn.py
+|   |
+|   |-- Time-VAE/
+|   |   |-- Time_vae_model.py
+|   |   |-- Train.py
+|   |   |-- Forcasting.py
+|   |   `-- forecasting_lstm_tcn_timevae.py
+|   |
+|   `-- Visulization/
+|       |-- baseline forecasting/
+|       |-- Direct Fidelity Assessment/
+|       |-- Synthetic Data Generation, Forecasting, and Statistical Validation Results/
+|       |-- Robustness Analysis of CFT-VAE Augmentation Performance/
+|       |-- Distributional Analysis of Augmentation Gains/
+|       |-- Computational Performance and Scalability Analysis/
+|       `-- Ablation Analysis of the Conditioning Mechanism/
+|
+|-- outputs/
+|   |-- temporal_split_data/
+|   |   |-- train/
+|   |   |-- val/
+|   |   `-- test/
+|   |
+|   |-- CFT-VAE/
+|   |   |-- history/
+|   |   |-- metamodels/
+|   |   |-- synthetic_data/
+|   |   `-- CFT-VAE-forecasting_results/
+|   |
+|   |-- Time-VAE/
+|   |   |-- original_timevae_results/
+|   |   `-- Time-vae_forecasting_results/
+|   |
+|   `-- Visualization/
+|
+|-- .gitattributes
+|-- .gitignore
+|-- LICENSE
+|-- README.md
+`-- requirements.txt
 ```
-## 3. Folder Structure Explained
-src/ : Contains all processing, modeling, training, forecasting, and analysis scripts.
 
-data/raw/: Stores the Good_Data.csv file (via Git LFS because it's large).
+## 3. Installation
 
-outputs/: automatically generated by the pipeline
+### 1. Install and configure Git LFS
 
-| Folder                 | Description                                              |
-| ---------------------- | -------------------------------------------------------- |
-| `temporal_split_data/` | Train/val/test NPZ files for every level & trial         |
-| `trained_models/`      | Saved TimeVAE weights + metadata + synthetic NPZ samples |
-| `forecasting_results/` | CSV files containing forecasting metrics                 |
-| `visualizations/`      | RMSE histograms, summary tables, etc.                    |
+Git LFS is required to download the large CSV and NPZ files.
 
-## 4. Installation
-
-1. Clone the repository
+```powershell
+git lfs install
+```
+### 2. Clone the repository
+```powershell
 git clone https://github.com/Biniam150/CFT-TimeVAE-WaterDemandForecasting.git
 cd CFT-TimeVAE-WaterDemandForecasting
+git lfs pull
+```
+### 3. Install the Python dependencies
 
-2. Install dependencies
+```powershell
 pip install -r requirements.txt
+```
 
-4. Ensure Git LFS is installed (for big datasets)
-git lfs install
-
-## 5. Step-by-Step: Running the Full Pipeline(Usage)
+## 4. Step-by-Step: Running the Full Pipeline(Usage)
 ### Step 1: Run Aggregation + Preprocessing
 This script will load Good_Data.csv, perform aggregation for all levels (1 → 1000 users), apply a temporal train/validation/test split, extract conditional features, and save all outputs to outputs/temporal_split_data/.
 
