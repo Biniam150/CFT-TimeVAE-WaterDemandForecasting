@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-root = Path(__file__).resolve().parents[2]
+root = Path(__file__).resolve().parents[3]
 PROCESSED_DIR = root / "outputs" / "temporal_split_data"
 SAVE_DIR = root / "outputs" / "Visualization"
 
