@@ -1,7 +1,8 @@
 """Summarize and plot the number of smart-meter records per user.
 
 By default, this script reads ``Good_Data.csv`` from the same directory and
-saves the resulting publication-quality histogram as ``Fig2.tiff``.
+saves the histogram as publication-quality ``Fig2.tiff`` and a
+GitHub-previewable ``Fig2.png``.
 """
 
 from __future__ import annotations
@@ -34,7 +35,10 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help=f"Output TIFF figure (default: {DEFAULT_OUTPUT})",
+        help=(
+            "Output TIFF figure; a PNG copy is saved beside it "
+            f"(default: {DEFAULT_OUTPUT})"
+        ),
     )
     parser.add_argument(
         "--bins",
@@ -82,8 +86,11 @@ def main() -> None:
     ax.grid(axis="y")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    png_output = args.output.with_suffix(".png")
     fig.savefig(args.output, dpi=300, format="tiff", bbox_inches="tight")
-    print(f"Figure saved to: {args.output}")
+    fig.savefig(png_output, dpi=300, format="png", bbox_inches="tight")
+    print(f"TIFF figure saved to: {args.output}")
+    print(f"PNG figure saved to: {png_output}")
 
     if args.show:
         plt.show()
