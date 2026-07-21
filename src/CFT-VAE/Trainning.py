@@ -8,7 +8,9 @@ import random
 import pandas as pd
 import gc  # Added for memory cleanup
 
-# Import your TimeVAE model definition
+
+
+
 from Model_definition import TimeVAE
 
 # ---------------------------------------------------
@@ -44,23 +46,23 @@ def load_temporal_dataset(file_path: str):
             'data': data['data'].astype(np.float32),
             'norm_params': data['norm_params'].item(),
             'feature_names': list(data['feature_names']),
-            'index': data['index'],
+            'index': data['index'] if 'index' in data.files else None,
             'metadata': data['metadata'].item()
         }
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return None
 
-def get_matching_datasets(base_dir: str, level: int, trial: int):
+def get_matching_datasets(processed_dir: str, level: int, trial: int):
     base_name = f"level_{level}_trial_{trial}"
     return {
-        'train': os.path.join(base_dir, "train", f"train_preprocessed_{base_name}.npz"),
-        'val': os.path.join(base_dir, "val", f"val_preprocessed_{base_name}.npz"),
-        'test': os.path.join(base_dir, "test", f"test_preprocessed_{base_name}.npz")
+        'train': os.path.join(processed_dir, "train", f"train_preprocessed_{base_name}.npz"),
+        'val': os.path.join(processed_dir, "val", f"val_preprocessed_{base_name}.npz"),
+        'test': os.path.join(processed_dir, "test", f"test_preprocessed_{base_name}.npz")
     }
 
-def discover_available_trials(base_dir: str, level: int):
-    train_dir = os.path.join(base_dir, "train")
+def discover_available_trials(processed_dir: str, level: int):
+    train_dir = os.path.join(processed_dir, "train")
     if not os.path.exists(train_dir):
         return []
 
@@ -71,14 +73,14 @@ def discover_available_trials(base_dir: str, level: int):
         match = re.search(rf"level_{level}_trial_(\d+)", file_path.stem)
         if match:
             trial_num = int(match.group(1))
-            paths = get_matching_datasets(base_dir, level, trial_num)
+            paths = get_matching_datasets(processed_dir, level, trial_num)
             if all(os.path.exists(p) for p in paths.values()):
                 available_trials.append(trial_num)
 
     return sorted(available_trials)
 
-def discover_available_levels(base_dir: str):
-    train_dir = os.path.join(base_dir, "train")
+def discover_available_levels(processed_dir: str):
+    train_dir = os.path.join(processed_dir, "train")
     if not os.path.exists(train_dir):
         return []
     levels = set()
@@ -97,12 +99,17 @@ def prepare_data_with_forecast(dataX, feature_idx, forecast_horizon=24):
 # ---------------------------------------------------
 # Synthetic Generation
 # ---------------------------------------------------
+def ratio_to_suffix(ratio: float) -> str:
+    """Return the filename-safe ratio format shared with forecasting."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def generate_synthetic_data_conditional(vae_model, level, trial, ratio, save_dir, 
-                                      real_x, real_cond, norm_params, norm_key):
+                                    real_x, real_cond, norm_params, norm_key):
     num_real = real_x.shape[0]
     num_synthetic_samples = int(num_real * ratio)
     
-    ratio_str = str(ratio).replace(".", "p")
+    ratio_str = ratio_to_suffix(ratio)
     synthetic_dir = os.path.join(save_dir, "synthetic_data", f"ratio_{ratio_str}")
     os.makedirs(synthetic_dir, exist_ok=True)
 
@@ -151,33 +158,38 @@ def generate_synthetic_data_conditional(vae_model, level, trial, ratio, save_dir
 # ---------------------------------------------------
 # Main Training Function (With Batching)
 # ---------------------------------------------------
-def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synthetic=True):
+def train_temporal_vae(processed_dir, output_dir, norm_key='total_demand_clipped', generate_synthetic=True):
     # --- START TIMER ---
     total_start_time = time.time()
 
     print("================================================================================")
     print("CFT-VAE TRAINING PIPELINE (Batched Mode)")
-    print(f"Data Directory: {data_dir}")
+    print(f"Processed Data Directory: {processed_dir}")
+    print(f"CFT-VAE Output Directory: {output_dir}")
     print("================================================================================")
     
-    models_dir = os.path.join(data_dir, "metamodels")
-    history_dir = os.path.join(data_dir, "history")
+    models_dir = os.path.join(output_dir, "metamodels")
+    history_dir = os.path.join(output_dir, "history")
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(history_dir, exist_ok=True)
     
     # 1. Selection
-    levels = discover_available_levels(data_dir)
+    levels = discover_available_levels(processed_dir)
+    if not levels:
+        print("Error: No preprocessed data found in output directory.")
+        return
+
     print(f"\nAvailable Levels: {levels}")
     sel_level = int(input(f"Enter Level to train: "))
 
-    all_trials = discover_available_trials(data_dir, sel_level)
+    all_trials = discover_available_trials(processed_dir, sel_level)
     print(f"Available Trials ({len(all_trials)}): {all_trials}")
     n_trials = int(input(f"How many trials to use (1-{len(all_trials)}): "))
     trials_to_run = all_trials[:n_trials]
 
     # 2. Batch Settings
     BATCH_RUN_SIZE = 10   # Run 10 trials
-    REST_TIME = 30        # Rest 30 seconds
+    REST_TIME = 30         # Rest 30 seconds
     
     ratios = [1, 2, 5, 10]
     print(f"Available Ratios: {ratios}")
@@ -188,7 +200,6 @@ def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synth
     # ---------------------------------------------------
     print(f"\nStarting Training: Level {sel_level} | {len(trials_to_run)} Trials | Batches of {BATCH_RUN_SIZE}")
     
-    # Split trials into chunks of 10
     trial_batches = [trials_to_run[i:i + BATCH_RUN_SIZE] for i in range(0, len(trials_to_run), BATCH_RUN_SIZE)]
     
     for batch_idx, batch_trials in enumerate(trial_batches):
@@ -197,16 +208,17 @@ def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synth
         for i, trial in enumerate(batch_trials):
             print(f"\n--- Trial {trial} ---")
             
-            # A. Reproducibility
             trial_seed = 123 + sel_level * 1000 + trial * 100
             np.random.seed(trial_seed)
             tf.random.set_seed(trial_seed)
             random.seed(trial_seed)
             
-            # B. Load & Prep
-            paths = get_matching_datasets(data_dir, sel_level, trial)
+            paths = get_matching_datasets(processed_dir, sel_level, trial)
             train_data = load_temporal_dataset(paths['train'])
             val_data = load_temporal_dataset(paths['val'])
+            if train_data is None or val_data is None:
+                print(f"    Skipping trial {trial}: missing or invalid train/validation data")
+                continue
             
             feats = train_data['feature_names']
             demand_idx = feats.index(norm_key)
@@ -233,7 +245,6 @@ def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synth
                 train_ds = tf.data.Dataset.from_tensor_slices((train_x, train_y_future)).shuffle(1024).batch(BATCH_SIZE)
                 val_ds = tf.data.Dataset.from_tensor_slices((val_x, val_y_future)).batch(BATCH_SIZE)
 
-            # C. Train
             vae = TimeVAE(
                 seq_len=24, feat_dim=1, cond_dim=cond_dim, latent_dim=32,
                 trend_dim=10, seasonal_dim=10, noise_dim=12,
@@ -250,34 +261,23 @@ def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synth
             
             vae.fit(train_ds, validation_data=val_ds, epochs=100, callbacks=callbacks, verbose=0)
             
-            # D. Save
             weights_path = os.path.join(models_dir, f"weights_level{sel_level}_trial{trial}.h5")
             vae.save_weights(weights_path)
             print(f"    ✓ Weights Saved")
             
             if generate_synthetic:
                 generate_synthetic_data_conditional(
-                    vae, sel_level, trial, sel_ratio, data_dir,
+                    vae, sel_level, trial, sel_ratio, output_dir,
                     train_x, train_cond, train_data['norm_params'], norm_key
                 )
 
-        # ---------------------------------------------------
-        # CLEANUP & REST AFTER BATCH
-        # ---------------------------------------------------
-        if batch_idx < len(trial_batches) - 1: # Don't sleep after the last batch
+        if batch_idx < len(trial_batches) - 1:
             print(f"\n[Batch Complete] Cleaning memory and resting for {REST_TIME} seconds...")
-            
-            # 1. Clear Keras Session (Frees GPU/Graph memory)
             tf.keras.backend.clear_session()
-            
-            # 2. Garbage Collect (Frees Python RAM)
             gc.collect()
-            
-            # 3. Sleep
             time.sleep(REST_TIME)
             print(">>> Resuming Next Batch >>>")
 
-    # --- STOP TIMER & PRINT DURATION ---
     overall_end_time = time.time()
     total_seconds = overall_end_time - total_start_time
     hours = int(total_seconds // 3600)
@@ -289,5 +289,13 @@ def train_temporal_vae(data_dir, norm_key='total_demand_clipped', generate_synth
     print("=" * 80)
 
 if __name__ == "__main__":
-    DATA_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data"
-    train_temporal_vae(DATA_DIR, norm_key='total_demand_clipped', generate_synthetic=True)
+    root = Path(__file__).resolve().parents[2]
+    PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+    OUTPUT_DIR = root / "outputs" / "CFT-VAE"
+
+    train_temporal_vae(
+        str(PROCESSED_DIR),
+        str(OUTPUT_DIR),
+        norm_key='total_demand_clipped',
+        generate_synthetic=True,
+    )

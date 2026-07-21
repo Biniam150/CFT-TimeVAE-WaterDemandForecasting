@@ -14,12 +14,15 @@ import gc
 
 warnings.filterwarnings('ignore')
 
-# =========================
-# Configuration
-# =========================
-PROCESSED_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data"
-SYNTHETIC_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data"
-SAVE_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\forecasting_results"
+# ================================================================
+# 1. Path-Independent Configuration
+# ================================================================
+# This script is stored under src/CFT-VAE.
+root = Path(__file__).resolve().parents[2]
+
+PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+SYNTHETIC_DIR = root / "outputs" / "CFT-VAE"
+SAVE_DIR = root / "outputs" / "CFT-VAE" / "CFT-VAE-forecasting_results"
 
 RANDOM_STATE = 42
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -53,7 +56,6 @@ def load_real_data(file_path):
             'data': data['data'].astype(np.float32),
             'norm_params': data['norm_params'].item(),
             'feature_names': list(data['feature_names']),
-            'index': data['index'],
             'metadata': data['metadata'].item()
         }
     except Exception as e:
@@ -75,6 +77,17 @@ def denormalize_data(data, norm_params, feature_name='total_demand_clipped'):
     if 'min' in norm_info and 'max' in norm_info:
         return data * (norm_info['max'] - norm_info['min'] + 1e-7) + norm_info['min']
     return data
+
+
+def extract_real_target(dataset, feature_name='total_demand_clipped'):
+    """Extract and denormalize the same demand feature modeled by CFT-VAE."""
+    feature_names = dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    normalized_target = dataset['data'][:, :, feature_idx]
+    return denormalize_data(normalized_target, dataset['norm_params'], feature_name)
+
 
 def create_features_and_targets(time_series_data):
     if len(time_series_data.shape) == 3:
@@ -109,43 +122,45 @@ def create_features_and_targets(time_series_data):
 # =========================
 # Discovery Helpers
 # =========================
+def ratio_to_suffix(ratio):
+    """Return the filename-safe ratio format used by CFT-VAE training."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def discover_available_levels():
-    train_dir = os.path.join(PROCESSED_DIR, "train")
-    if not os.path.exists(train_dir): return []
-    train_files = list(Path(train_dir).glob("train_preprocessed_*.npz"))
+    train_dir = PROCESSED_DIR / "train"
+    if not train_dir.exists(): return []
+    train_files = list(train_dir.glob("train_preprocessed_*.npz"))
     levels = sorted({int(re.search(r"level_(\d+)_trial_", f.stem).group(1)) for f in train_files})
     return levels
 
 def discover_available_trials(level):
-    train_dir = os.path.join(PROCESSED_DIR, "train")
-    if not os.path.exists(train_dir): return []
+    train_dir = PROCESSED_DIR / "train"
+    if not train_dir.exists(): return []
     trials = []
-    for file in Path(train_dir).glob(f"train_preprocessed_level_{level}_trial_*.npz"):
+    for file in train_dir.glob(f"train_preprocessed_level_{level}_trial_*.npz"):
         match = re.search(r"trial_(\d+)", file.stem)
         if match:
             trial = int(match.group(1))
-            test_file = os.path.join(PROCESSED_DIR, "test", f"test_preprocessed_level_{level}_trial_{trial}.npz")
-            if os.path.exists(test_file):
+            test_file = PROCESSED_DIR / "test" / f"test_preprocessed_level_{level}_trial_{trial}.npz"
+            if test_file.exists():
                 trials.append(trial)
     return sorted(trials)
 
 def discover_available_ratios(level, trial):
     available_ratios = []
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    for ratio, ratio_suffix in ratio_map.items():
-        file_path = os.path.join(SYNTHETIC_DIR, "synthetic_data", f"ratio_{ratio_suffix}", 
-                                 f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz")
-        if os.path.exists(file_path):
+    supported_ratios = [1, 1.5, 2, 5, 10, 50]
+    for ratio in supported_ratios:
+        ratio_suffix = ratio_to_suffix(ratio)
+        file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
+        if file_path.exists():
             available_ratios.append(ratio)
     return sorted(available_ratios)
 
 def get_synthetic_file_path(level, trial, ratio):
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    if ratio not in ratio_map: return None
-    ratio_suffix = ratio_map[ratio]
-    file_path = os.path.join(SYNTHETIC_DIR, "synthetic_data", f"ratio_{ratio_suffix}", 
-                            f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz")
-    return file_path if os.path.exists(file_path) else None
+    ratio_suffix = ratio_to_suffix(ratio)
+    file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
+    return str(file_path) if file_path.exists() else None
 
 # =========================
 # Main Evaluation Logic
@@ -155,10 +170,13 @@ def run_forecasting_evaluation():
     
     print("================================================================================")
     print("CFT-VAE FORECASTING EVALUATION (Baseline, Synthetic-Only, Augmented)")
+    print(f"Project Root: {root}")
     print("================================================================================")
     
     available_levels = discover_available_levels()
-    if not available_levels: return
+    if not available_levels:
+        print(f"Error: No data found in {PROCESSED_DIR}")
+        return
 
     print(f"\nAvailable Levels: {available_levels}")
     selected_level = int(input("Enter aggregation level: "))
@@ -190,65 +208,54 @@ def run_forecasting_evaluation():
         
         for trial in batch_trials:
             print(f"\n   --- Trial {trial} ---")
-            train_path = os.path.join(PROCESSED_DIR, "train", f"train_preprocessed_level_{selected_level}_trial_{trial}.npz")
-            test_path = os.path.join(PROCESSED_DIR, "test", f"test_preprocessed_level_{selected_level}_trial_{trial}.npz")
+            train_path = PROCESSED_DIR / "train" / f"train_preprocessed_level_{selected_level}_trial_{trial}.npz"
+            test_path = PROCESSED_DIR / "test" / f"test_preprocessed_level_{selected_level}_trial_{trial}.npz"
             syn_path = get_synthetic_file_path(selected_level, trial, selected_ratio)
 
-            train_data = load_real_data(train_path)
-            test_data = load_real_data(test_path)
+            train_data = load_real_data(str(train_path))
+            test_data = load_real_data(str(test_path))
             synthetic_raw = load_synthetic_data(syn_path)
             
             if not train_data or not test_data or synthetic_raw is None: continue
 
-            # Create Real Datasets
-            train_real = denormalize_data(train_data['data'][:, :, 0], train_data['norm_params'])
-            test_real = denormalize_data(test_data['data'][:, :, 0], test_data['norm_params'])
+            train_real = extract_real_target(train_data)
+            test_real = extract_real_target(test_data)
             X_train_real, y_train_real = create_features_and_targets(train_real)
             X_test_real, y_test_real = create_features_and_targets(test_real)
 
-            # Create Synthetic Datasets
             X_syn, y_syn = create_features_and_targets(synthetic_raw)
             
-            # Align features
             common_feats = X_train_real.columns.intersection(X_syn.columns)
             X_train_real, X_test_real, X_syn = X_train_real[common_feats], X_test_real[common_feats], X_syn[common_feats]
 
-            # Augmented Dataset
             X_aug = pd.concat([X_train_real, X_syn], ignore_index=True)
             y_aug = pd.concat([y_train_real, y_syn], ignore_index=True)
 
             for name, model_template in models_dict.items():
-                # --- 1. BASELINE ---
+                # 1. BASELINE
                 m_base = model_template.__class__(**model_template.get_params())
                 m_base.fit(X_train_real, y_train_real)
                 res_base = calculate_metrics(y_test_real, m_base.predict(X_test_real))
 
-                # --- 2. SYNTHETIC ONLY ---
+                # 2. SYNTHETIC ONLY
                 m_syn = model_template.__class__(**model_template.get_params())
                 m_syn.fit(X_syn, y_syn)
                 res_syn = calculate_metrics(y_test_real, m_syn.predict(X_test_real))
 
-                # --- 3. AUGMENTED ---
+                # 3. AUGMENTED
                 m_aug = model_template.__class__(**model_template.get_params())
                 m_aug.fit(X_aug, y_aug)
                 res_aug = calculate_metrics(y_test_real, m_aug.predict(X_test_real))
 
-                # Calculate Improvement (Baseline vs Augmented)
                 imp_pct = ((res_base['rmse'] - res_aug['rmse']) / res_base['rmse'] * 100) if res_base['rmse'] > 0 else 0
                 print(f"      {name:18}: Base {res_base['rmse']:.3f} | Syn {res_syn['rmse']:.3f} | Aug {res_aug['rmse']:.3f} ({imp_pct:+.2f}%)")
 
-                # Store all three as separate rows for the reporter script
-                scenarios = [
-                    ('baseline', res_base),
-                    ('synthetic_only', res_syn),
-                    ('augmented', res_aug)
-                ]
-                
+                scenarios = [('baseline', res_base), ('synthetic_only', res_syn), ('augmented', res_aug)]
                 for stype, metrics in scenarios:
                     all_results.append({
                         'level': selected_level, 'trial': trial, 'ratio': selected_ratio, 
                         'model': name, 'training_type': stype,
-                        'baseline_rmse': res_base['rmse'], # Keep for legacy/ref
+                        'baseline_rmse': res_base['rmse'],
                         'result_rmse': metrics['rmse'], 
                         'rmse_improvement_pct': imp_pct if stype == 'augmented' else 0,
                         'result_r2': metrics['r2'], 'result_mape': metrics['mape']
@@ -258,12 +265,12 @@ def run_forecasting_evaluation():
             gc.collect()
             time.sleep(REST_TIME)
 
-    # Save
     if all_results:
         df_res = pd.DataFrame(all_results)
-        fname = f"results_level{selected_level}_ratio{str(selected_ratio).replace('.', 'p')}.csv"
-        df_res.to_csv(os.path.join(SAVE_DIR, fname), index=False)
-        print(f"\nDONE. Saved to: {fname}")
+        ratio_str = ratio_to_suffix(selected_ratio)
+        fname = f"results_level{selected_level}_ratio{ratio_str}.csv"
+        df_res.to_csv(SAVE_DIR / fname, index=False)
+        print(f"\nDONE. Saved to: {SAVE_DIR / fname}")
 
 if __name__ == "__main__":
     run_forecasting_evaluation()

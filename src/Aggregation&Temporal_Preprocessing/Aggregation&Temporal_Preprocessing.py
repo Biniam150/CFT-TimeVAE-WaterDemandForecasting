@@ -138,10 +138,12 @@ def save_datasets_to_files(all_datasets: Dict, save_dir: str, split_name: str, f
 
         num_windows = len(normed_data) // 24
         dataX = normed_data.values[:num_windows*24].reshape(num_windows, 24, len(feature_columns))
+        data_index = normed_data.index[:num_windows*24].to_numpy()
 
         # FILENAME MATCH: split_preprocessed_level_X_trial_Y.npz
         save_path = os.path.join(save_dir, f"{split_name}_preprocessed_{dataset_key}.npz")
-        np.savez(save_path, data=dataX, norm_params=trial_norm_params, feature_names=feature_columns,
+        np.savez(save_path, data=dataX, norm_params=trial_norm_params,
+                 feature_names=feature_columns, index=data_index,
                  metadata={"users": dataset["users"], "level": dataset["level"], "trial": dataset["trial"]})
 
 # ================================================================

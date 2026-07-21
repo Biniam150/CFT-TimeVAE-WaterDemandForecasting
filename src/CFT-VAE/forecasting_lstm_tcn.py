@@ -19,12 +19,12 @@ from pathlib import Path
 warnings.filterwarnings('ignore')
 
 # ================================================================
-# Configuration
+# Path-independent configuration
 # ================================================================
-# Hardcoded paths (working version for your current setup)
-PROCESSED_DIR = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data")
-SYNTHETIC_DIR = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data")
-SAVE_DIR      = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\forecasting_results")
+root = Path(__file__).resolve().parents[2]
+PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+SYNTHETIC_DIR = root / "outputs" / "CFT-VAE"
+SAVE_DIR = root / "outputs" / "CFT-VAE" / "CFT-VAE-forecasting_results"
 
 RANDOM_STATE = 42
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -142,6 +142,17 @@ def denormalize_data(data, norm_params, feature_name='total_demand_clipped'):
         return data * (norm_info['max'] - norm_info['min'] + 1e-7) + norm_info['min']
     return data
 
+
+def extract_real_target(dataset, feature_name='total_demand_clipped'):
+    """Extract and denormalize the same demand feature modeled by CFT-VAE."""
+    feature_names = dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    normalized_target = dataset['data'][:, :, feature_idx]
+    return denormalize_data(normalized_target, dataset['norm_params'], feature_name)
+
+
 def create_features_and_targets(time_series_data):
     if len(time_series_data.shape) == 3:
         flattened = time_series_data[:, :, 0].flatten()
@@ -175,6 +186,11 @@ def create_features_and_targets(time_series_data):
 # =========================
 # Discovery Helpers (Same as 4-models)
 # =========================
+def ratio_to_suffix(ratio):
+    """Return the filename-safe ratio format used by CFT-VAE training."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def discover_available_levels():
     train_dir = PROCESSED_DIR / "train"
     if not train_dir.exists(): return []
@@ -197,17 +213,16 @@ def discover_available_trials(level):
 
 def discover_available_ratios(level, trial):
     available_ratios = []
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    for ratio, ratio_suffix in ratio_map.items():
+    supported_ratios = [1, 1.5, 2, 5, 10, 50]
+    for ratio in supported_ratios:
+        ratio_suffix = ratio_to_suffix(ratio)
         file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
         if file_path.exists():
             available_ratios.append(ratio)
     return sorted(available_ratios)
 
 def get_synthetic_file_path(level, trial, ratio):
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    if ratio not in ratio_map: return None
-    ratio_suffix = ratio_map[ratio]
+    ratio_suffix = ratio_to_suffix(ratio)
     file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
     return str(file_path) if file_path.exists() else None
 
@@ -260,8 +275,8 @@ def run_forecasting_evaluation():
             print(f"  Skipping trial {trial} (missing data)")
             continue
 
-        train_real = denormalize_data(train_data['data'][:, :, 0], train_data['norm_params'])
-        test_real = denormalize_data(test_data['data'][:, :, 0], test_data['norm_params'])
+        train_real = extract_real_target(train_data)
+        test_real = extract_real_target(test_data)
         X_train_real, y_train_real = create_features_and_targets(train_real)
         X_test_real, y_test_real = create_features_and_targets(test_real)
 
@@ -325,7 +340,7 @@ def run_forecasting_evaluation():
     # Save
     if all_results:
         df_res = pd.DataFrame(all_results)
-        ratio_str = str(selected_ratio).replace('.', 'p')
+        ratio_str = ratio_to_suffix(selected_ratio)
         fname = f"results_level{selected_level}_ratio{ratio_str}_lstm_tcn.csv"
         df_res.to_csv(SAVE_DIR / fname, index=False)
         print(f"\nDONE. Saved to: {SAVE_DIR / fname}")
