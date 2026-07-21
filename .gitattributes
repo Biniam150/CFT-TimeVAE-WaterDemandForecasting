@@ -5,4 +5,3 @@ outputs/temporal_split_data/sample[[:space:]]test/*.npz filter=lfs diff=lfs merg
 outputs/temporal_split_data/sample[[:space:]]train/*.npz filter=lfs diff=lfs merge=lfs -text
 outputs/sample_cft-vae-syntheic_data/*.npz filter=lfs diff=lfs merge=lfs -text
 outputs/sample_time-vae_synthehtic_data/*.npz filter=lfs diff=lfs merge=lfs -text
-*.tiff filter=lfs diff=lfs merge=lfs -text
