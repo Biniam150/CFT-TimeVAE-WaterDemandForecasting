@@ -19,13 +19,13 @@ from pathlib import Path
 warnings.filterwarnings('ignore')
 
 # ================================================================
-# Configuration
+# Path-independent configuration
 # ================================================================
-# Hardcoded paths (Time-VAE synthetic data with the same real train/test data)
-PROCESSED_DIR = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data")
-SYNTHETIC_DIR = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\Timevae\original_timevae_results")
-SAVE_DIR      = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\Revision\Code\Timevae\original_forecasting_results")
-CFT_BASELINE_RESULTS_DIR = Path(r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\forecasting_results")
+root = Path(__file__).resolve().parents[2]
+PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+SYNTHETIC_DIR = root / "outputs" / "Time-VAE" / "original_timevae_results"
+SAVE_DIR = root / "outputs" / "Time-VAE" / "Time-vae_forecasting_results"
+CFT_BASELINE_RESULTS_DIR = root / "outputs" / "CFT-VAE" / "CFT-VAE-forecasting_results"
 
 RANDOM_STATE = 42
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -131,7 +131,11 @@ def load_real_data(file_path):
 def load_synthetic_data(file_path):
     try:
         data = np.load(file_path, allow_pickle=True)
-        return data['synthetic_samples']
+        return {
+            'synthetic_samples': data['synthetic_samples'].astype(np.float32),
+            'norm_params': data['norm_params'].item() if 'norm_params' in data.files else None,
+            'norm_key': data['norm_key'].item() if 'norm_key' in data.files else None,
+        }
     except Exception as e:
         print(f"Error loading synthetic data {file_path}: {e}")
         return None
@@ -143,6 +147,38 @@ def denormalize_data(data, norm_params, feature_name='total_demand_clipped'):
     if 'min' in norm_info and 'max' in norm_info:
         return data * (norm_info['max'] - norm_info['min'] + 1e-7) + norm_info['min']
     return data
+
+
+def extract_real_target(dataset, feature_name='total_demand_clipped'):
+    """Extract and denormalize the selected target from processed real data."""
+    feature_names = dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    normalized_target = dataset['data'][:, :, feature_idx]
+    return denormalize_data(normalized_target, dataset['norm_params'], feature_name)
+
+
+def extract_synthetic_target(synthetic_dataset, reference_dataset,
+                             feature_name='total_demand_clipped'):
+    """Extract and denormalize the matching target from Time-VAE samples."""
+    samples = synthetic_dataset['synthetic_samples']
+    feature_names = reference_dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    if samples.ndim != 3:
+        raise ValueError(f"Expected 3D synthetic samples, received shape {samples.shape}")
+    if samples.shape[2] == 1:
+        feature_idx = 0
+    elif feature_idx >= samples.shape[2]:
+        raise ValueError(
+            f"Synthetic feature dimension {samples.shape[2]} does not contain "
+            f"target index {feature_idx}"
+        )
+    norm_params = synthetic_dataset['norm_params'] or reference_dataset['norm_params']
+    return denormalize_data(samples[:, :, feature_idx], norm_params, feature_name)
+
 
 def create_features_and_targets(time_series_data):
     if len(time_series_data.shape) == 3:
@@ -177,6 +213,11 @@ def create_features_and_targets(time_series_data):
 # =========================
 # Discovery Helpers (Same as 4-models)
 # =========================
+def ratio_to_suffix(ratio):
+    """Return the filename-safe ratio format shared by both VAE pipelines."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def discover_available_levels():
     train_dir = PROCESSED_DIR / "train"
     if not train_dir.exists(): return []
@@ -199,23 +240,22 @@ def discover_available_trials(level):
 
 def discover_available_ratios(level, trial):
     available_ratios = []
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    for ratio, ratio_suffix in ratio_map.items():
+    supported_ratios = [1, 1.5, 2, 5, 10, 50]
+    for ratio in supported_ratios:
+        ratio_suffix = ratio_to_suffix(ratio)
         file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
         if file_path.exists():
             available_ratios.append(ratio)
     return sorted(available_ratios)
 
 def get_synthetic_file_path(level, trial, ratio):
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    if ratio not in ratio_map: return None
-    ratio_suffix = ratio_map[ratio]
+    ratio_suffix = ratio_to_suffix(ratio)
     file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
     return str(file_path) if file_path.exists() else None
 
 
 def load_shared_baseline_results(level, ratio):
-    ratio_str = str(ratio).replace('.', 'p')
+    ratio_str = ratio_to_suffix(ratio)
     baseline_path = CFT_BASELINE_RESULTS_DIR / f"results_level{level}_ratio{ratio_str}_lstm_tcn.csv"
 
     if not baseline_path.exists():
@@ -296,18 +336,19 @@ def run_forecasting_evaluation():
 
         train_data = load_real_data(str(train_path))
         test_data = load_real_data(str(test_path))
-        synthetic_raw = load_synthetic_data(syn_path)
+        synthetic_data = load_synthetic_data(syn_path)
        
-        if not train_data or not test_data or synthetic_raw is None:
+        if not train_data or not test_data or synthetic_data is None:
             print(f"  Skipping trial {trial} (missing data)")
             continue
 
-        train_real = denormalize_data(train_data['data'][:, :, 0], train_data['norm_params'])
-        test_real = denormalize_data(test_data['data'][:, :, 0], test_data['norm_params'])
+        train_real = extract_real_target(train_data)
+        test_real = extract_real_target(test_data)
         X_train_real, y_train_real = create_features_and_targets(train_real)
         X_test_real, y_test_real = create_features_and_targets(test_real)
 
-        X_syn, y_syn = create_features_and_targets(synthetic_raw)
+        synthetic_target = extract_synthetic_target(synthetic_data, train_data)
+        X_syn, y_syn = create_features_and_targets(synthetic_target)
         
         common_feats = X_train_real.columns.intersection(X_syn.columns)
         X_train_real = X_train_real[common_feats]
@@ -370,7 +411,7 @@ def run_forecasting_evaluation():
     # Save
     if all_results:
         df_res = pd.DataFrame(all_results)
-        ratio_str = str(selected_ratio).replace('.', 'p')
+        ratio_str = ratio_to_suffix(selected_ratio)
         fname = f"results_lvl{selected_level}_lstm_tcn_original_timevae_ratio{ratio_str}.csv"
         df_res.to_csv(SAVE_DIR / fname, index=False)
         print(f"\nDONE. Saved to: {SAVE_DIR / fname}")

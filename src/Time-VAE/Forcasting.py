@@ -17,12 +17,10 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-# Real data directory
-PROCESSED_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data"
-# Synthetic data directory (Original TimeVAE)
-SYNTHETIC_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\Timevae\original_timevae_results"
-# Directory to save these specific forecasting results
-SAVE_DIR      = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\Timevae\original_forecasting_results"
+root = Path(__file__).resolve().parents[2]
+PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+SYNTHETIC_DIR = root / "outputs" / "Time-VAE" / "original_timevae_results"
+SAVE_DIR = root / "outputs" / "Time-VAE" / "Time-vae_forecasting_results"
 
 RANDOM_STATE = 42
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -56,7 +54,7 @@ def load_real_data(file_path):
             'data': data['data'].astype(np.float32),
             'norm_params': data['norm_params'].item(),
             'feature_names': list(data['feature_names']),
-            'index': data['index'],
+            'index': data['index'] if 'index' in data.files else None,
             'metadata': data['metadata'].item()
         }
     except Exception as e:
@@ -66,7 +64,11 @@ def load_real_data(file_path):
 def load_synthetic_data(file_path):
     try:
         data = np.load(file_path, allow_pickle=True)
-        return data['synthetic_samples']
+        return {
+            'synthetic_samples': data['synthetic_samples'].astype(np.float32),
+            'norm_params': data['norm_params'].item() if 'norm_params' in data.files else None,
+            'norm_key': data['norm_key'].item() if 'norm_key' in data.files else None,
+        }
     except Exception as e:
         print(f"Error loading synthetic data {file_path}: {e}")
         return None
@@ -78,6 +80,38 @@ def denormalize_data(data, norm_params, feature_name='total_demand_clipped'):
     if 'min' in norm_info and 'max' in norm_info:
         return data * (norm_info['max'] - norm_info['min'] + 1e-7) + norm_info['min']
     return data
+
+
+def extract_real_target(dataset, feature_name='total_demand_clipped'):
+    """Extract and denormalize the selected target from processed real data."""
+    feature_names = dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    normalized_target = dataset['data'][:, :, feature_idx]
+    return denormalize_data(normalized_target, dataset['norm_params'], feature_name)
+
+
+def extract_synthetic_target(synthetic_dataset, reference_dataset,
+                             feature_name='total_demand_clipped'):
+    """Extract and denormalize the matching target from Time-VAE samples."""
+    samples = synthetic_dataset['synthetic_samples']
+    feature_names = reference_dataset['feature_names']
+    if feature_name not in feature_names:
+        raise KeyError(f"Feature '{feature_name}' not found in processed dataset")
+    feature_idx = feature_names.index(feature_name)
+    if samples.ndim != 3:
+        raise ValueError(f"Expected 3D synthetic samples, received shape {samples.shape}")
+    if samples.shape[2] == 1:
+        feature_idx = 0
+    elif feature_idx >= samples.shape[2]:
+        raise ValueError(
+            f"Synthetic feature dimension {samples.shape[2]} does not contain "
+            f"target index {feature_idx}"
+        )
+    norm_params = synthetic_dataset['norm_params'] or reference_dataset['norm_params']
+    return denormalize_data(samples[:, :, feature_idx], norm_params, feature_name)
+
 
 def create_features_and_targets(time_series_data):
     if len(time_series_data.shape) == 3:
@@ -112,46 +146,45 @@ def create_features_and_targets(time_series_data):
 # ==============================================================================
 # DISCOVERY HELPERS
 # ==============================================================================
+def ratio_to_suffix(ratio):
+    """Return the filename-safe ratio format used by Time-VAE training."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def discover_available_levels():
-    train_dir = os.path.join(PROCESSED_DIR, "train")
-    if not os.path.exists(train_dir): return []
-    train_files = list(Path(train_dir).glob("train_preprocessed_*.npz"))
+    train_dir = PROCESSED_DIR / "train"
+    if not train_dir.exists(): return []
+    train_files = list(train_dir.glob("train_preprocessed_*.npz"))
     levels = sorted({int(re.search(r"level_(\d+)_trial_", f.stem).group(1)) for f in train_files})
     return levels
 
 def discover_available_trials(level):
-    train_dir = os.path.join(PROCESSED_DIR, "train")
-    if not os.path.exists(train_dir): return []
+    train_dir = PROCESSED_DIR / "train"
+    if not train_dir.exists(): return []
     trials = []
-    for file in Path(train_dir).glob(f"train_preprocessed_level_{level}_trial_*.npz"):
+    for file in train_dir.glob(f"train_preprocessed_level_{level}_trial_*.npz"):
         match = re.search(r"trial_(\d+)", file.stem)
         if match:
             trial = int(match.group(1))
-            test_file = os.path.join(PROCESSED_DIR, "test", f"test_preprocessed_level_{level}_trial_{trial}.npz")
-            if os.path.exists(test_file):
+            test_file = PROCESSED_DIR / "test" / f"test_preprocessed_level_{level}_trial_{trial}.npz"
+            if test_file.exists():
                 trials.append(trial)
     return sorted(trials)
 
 def discover_available_ratios(level, trial):
     available_ratios = []
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    for ratio, ratio_suffix in ratio_map.items():
-        file_path = os.path.join(SYNTHETIC_DIR, "synthetic_data", f"ratio_{ratio_suffix}", 
-                                 f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz")
-        if os.path.exists(file_path):
+    supported_ratios = [1, 1.5, 2, 5, 10, 50]
+    for ratio in supported_ratios:
+        ratio_suffix = ratio_to_suffix(ratio)
+        file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
+        if file_path.exists():
             available_ratios.append(ratio)
     return sorted(available_ratios)
 
 def get_synthetic_file_path(level, trial, ratio):
-    ratio_map = {1: "1p0", 1.5: "1p5", 2: "2", 5: "5", 10: "10", 50: "50"}
-    if ratio not in ratio_map: return None
-    ratio_suffix = ratio_map[ratio]
-    
-    # Points specifically to 'original' TimeVAE synthetic files
-    file_path = os.path.join(SYNTHETIC_DIR, "synthetic_data", f"ratio_{ratio_suffix}", 
-                            f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz")
-    
-    return file_path if os.path.exists(file_path) else None
+    ratio_suffix = ratio_to_suffix(ratio)
+    file_path = SYNTHETIC_DIR / "synthetic_data" / f"ratio_{ratio_suffix}" / f"synthetic_original_level{level}_trial{trial}_ratio{ratio_suffix}.npz"
+    return str(file_path) if file_path.exists() else None
 
 # ==============================================================================
 # MAIN EVALUATION LOGIC
@@ -198,26 +231,27 @@ def run_forecasting_evaluation():
         
         for trial in batch_trials:
             print(f"\n   --- Trial {trial} ---")
-            train_path = os.path.join(PROCESSED_DIR, "train", f"train_preprocessed_level_{selected_level}_trial_{trial}.npz")
-            test_path = os.path.join(PROCESSED_DIR, "test", f"test_preprocessed_level_{selected_level}_trial_{trial}.npz")
+            train_path = PROCESSED_DIR / "train" / f"train_preprocessed_level_{selected_level}_trial_{trial}.npz"
+            test_path = PROCESSED_DIR / "test" / f"test_preprocessed_level_{selected_level}_trial_{trial}.npz"
             syn_path = get_synthetic_file_path(selected_level, trial, selected_ratio)
 
-            train_data = load_real_data(train_path)
-            test_data = load_real_data(test_path)
-            synthetic_raw = load_synthetic_data(syn_path)
+            train_data = load_real_data(str(train_path))
+            test_data = load_real_data(str(test_path))
+            synthetic_data = load_synthetic_data(syn_path)
             
-            if not train_data or not test_data or synthetic_raw is None: 
+            if not train_data or not test_data or synthetic_data is None:
                 print(f"   [!] Missing files for trial {trial}. Skipping...")
                 continue
 
             # Create Real Datasets
-            train_real = denormalize_data(train_data['data'][:, :, 0], train_data['norm_params'])
-            test_real = denormalize_data(test_data['data'][:, :, 0], test_data['norm_params'])
+            train_real = extract_real_target(train_data)
+            test_real = extract_real_target(test_data)
             X_train_real, y_train_real = create_features_and_targets(train_real)
             X_test_real, y_test_real = create_features_and_targets(test_real)
 
             # Create Synthetic Datasets
-            X_syn, y_syn = create_features_and_targets(synthetic_raw)
+            synthetic_target = extract_synthetic_target(synthetic_data, train_data)
+            X_syn, y_syn = create_features_and_targets(synthetic_target)
             
             # Align features
             common_feats = X_train_real.columns.intersection(X_syn.columns)
@@ -267,8 +301,8 @@ def run_forecasting_evaluation():
         df_res = pd.DataFrame(all_results)
         
         # Define the specific filename and full path
-        fname = f"results_level{selected_level}_ratio{str(selected_ratio).replace('.', 'p')}.csv"
-        save_path = os.path.join(SAVE_DIR, fname)
+        fname = f"results_level{selected_level}_ratio{ratio_to_suffix(selected_ratio)}.csv"
+        save_path = SAVE_DIR / fname
         
         # Save to the CSV file
         df_res.to_csv(save_path, index=False)

@@ -27,7 +27,7 @@ def load_temporal_dataset(file_path: str):
             'data': data['data'].astype(np.float32),
             'norm_params': data['norm_params'].item(),
             'feature_names': list(data['feature_names']),
-            'index': data['index'],
+            'index': data['index'] if 'index' in data.files else None,
             'metadata': data['metadata'].item()
         }
     except Exception as e:
@@ -63,7 +63,8 @@ def validate_dataset_compatibility(train_data, val_data):
         issues.append(f"Shape mismatch - Train: {train_data['data'].shape}, Val: {val_data['data'].shape}")
     if train_data['feature_names'] != val_data['feature_names']:
         issues.append("Feature name mismatch between train and val")
-    if train_data['index'][-1] >= val_data['index'][0]:
+    if (train_data['index'] is not None and val_data['index'] is not None
+            and train_data['index'][-1] >= val_data['index'][0]):
         issues.append(f"Temporal overlap - Train ends: {train_data['index'][-1]}, Val starts: {val_data['index'][0]}")
     return issues
 
@@ -74,9 +75,14 @@ def save_training_history(history, save_path):
     np.savez_compressed(save_path, **history_dict)
     print(f"  ✓ Training history saved: {save_path}")
 
+def ratio_to_suffix(ratio: float) -> str:
+    """Return the filename-safe ratio format shared with forecasting."""
+    return str(float(ratio)).replace(".", "p")
+
+
 def generate_synthetic_data_original(vae_model, level, trial, ratio, generation_idx, save_dir,
                                      real_data, norm_params, norm_key, num_synthetic_samples=500):
-    ratio_str = str(ratio).replace(".", "p")
+    ratio_str = ratio_to_suffix(ratio)
     synthetic_dir = os.path.join(save_dir, "synthetic_data", f"ratio_{ratio_str}")
     os.makedirs(synthetic_dir, exist_ok=True)
     try:
@@ -155,7 +161,8 @@ def train_original_timevae(processed_dir, save_dir, selected_level, selected_tri
         if batch_idx < num_batches:
             print(f"\n⏸️  Resting for {rest_minutes} minutes..."); time.sleep(rest_minutes * 60)
 
-    summary_path = os.path.join(meta_dir, f"training_summary_original_level{selected_level}_ratio{str(selected_ratio).replace('.', 'p')}.npz")
+    ratio_str = ratio_to_suffix(selected_ratio)
+    summary_path = os.path.join(meta_dir, f"training_summary_original_level{selected_level}_ratio{ratio_str}.npz")
     np.savez_compressed(summary_path, results=all_results, level=selected_level, ratio=selected_ratio)
     return all_results
 
@@ -166,18 +173,26 @@ if __name__ == "__main__":
     NUM_TRIALS = int(input("Enter number of trials to run (e.g., 1): "))
     print("="*50 + "\n")
 
-    # Fixed paths/config
-    PROCESSED_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\cft-vae\data"
-    SAVE_DIR = r"C:\Users\bin150\OneDrive - UBC\Desktop\Publication\WR2\Timevae\original_timevae_results"
+    root = Path(__file__).resolve().parents[2]
+    PROCESSED_DIR = root / "outputs" / "temporal_split_data"
+    SAVE_DIR = root / "outputs" / "Time-VAE" / "original_timevae_results"
+
+    available_trials = discover_available_trials(str(PROCESSED_DIR), SELECTED_LEVEL)
+    if not available_trials:
+        raise FileNotFoundError(
+            f"No complete train/validation/test trials found for level {SELECTED_LEVEL} "
+            f"under {PROCESSED_DIR}"
+        )
+    selected_trials = available_trials[:NUM_TRIALS]
     
     # Start timer
     overall_start_time = time.time()
 
     results = train_original_timevae(
-        processed_dir=PROCESSED_DIR,
-        save_dir=SAVE_DIR,
+        processed_dir=str(PROCESSED_DIR),
+        save_dir=str(SAVE_DIR),
         selected_level=SELECTED_LEVEL,
-        selected_trials=list(range(1, NUM_TRIALS + 1)),
+        selected_trials=selected_trials,
         selected_ratio=1.0,
         norm_key='total_demand_clipped',
         generate_synthetic=True,
