@@ -23,6 +23,7 @@ The experimental pipeline supports 25 user-aggregation levels and multiple rando
 - Temporal Convolutional Network (TCN)
 - 
 ## 2. Repository Structure
+```text
 CFT-TimeVAE-WaterDemandForecasting/
 |
 |-- data/
@@ -86,6 +87,7 @@ CFT-TimeVAE-WaterDemandForecasting/
 |-- LICENSE
 |-- README.md
 `-- requirements.txt
+```
 
 ## 3. Installation
 
