@@ -10,7 +10,7 @@ np.random.seed(42)
 # ================================================================
 # 1. Load & Filter
 # ================================================================
-def load_and_filter_data(file_path: str, min_records_per_user: int = 1000) -> pd.DataFrame:
+def load_and_filter_data(file_path: str, min_records_per_user: int = 10000) -> pd.DataFrame:
     print(f"Loading data from: {file_path}")
     try:
         df = pd.read_csv(file_path, parse_dates=['datetime'])
