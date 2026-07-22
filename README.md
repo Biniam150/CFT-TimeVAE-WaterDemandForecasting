@@ -23,7 +23,69 @@ The experimental pipeline supports 25 user-aggregation levels and multiple rando
 - Temporal Convolutional Network (TCN)
 - 
 ## 2. Repository Structure
-
+CFT-TimeVAE-WaterDemandForecasting/
+|
+|-- data/
+|   |-- raw/
+|   |   `-- swm_trialA_1K.csv
+|   |
+|   `-- Processed_data/
+|       |-- Good_Data.csv
+|       |-- user_frequency_distribution.py
+|       `-- Fig2.png
+|
+|-- docs/
+|   |-- Experiment_Running_Manual.docx
+|   `-- Experiment_Running_Manual.pdf
+|
+|-- outputs/
+|   |-- temporal_split_data/
+|   |   |-- train/
+|   |   |-- val/
+|   |   `-- test/
+|   |
+|   |-- CFT-VAE/
+|   |   |-- history/
+|   |   |-- metamodels/
+|   |   |-- synthetic_data/
+|   |   `-- CFT-VAE-forecasting_results/
+|   |
+|   |-- Time-VAE/
+|   |   |-- original_timevae_results/
+|   |   `-- Time-vae_forecasting_results/
+|   |
+|   `-- Visualization/
+|
+|-- src/
+|   |-- Aggregation&Temporal_Preprocessing/
+|   |   `-- Aggregation&Temporal_Preprocessing.py
+|   |
+|   |-- CFT-VAE/
+|   |   |-- Model_definition.py
+|   |   |-- Trainning.py
+|   |   |-- Forcasting.py
+|   |   `-- forecasting_lstm_tcn.py
+|   |
+|   |-- Time-VAE/
+|   |   |-- Time_vae_model.py
+|   |   |-- Train.py
+|   |   |-- Forcasting.py
+|   |   `-- forecasting_lstm_tcn_timevae.py
+|   |
+|   `-- Visulization/
+|       |-- baseline forecasting/
+|       |-- Direct Fidelity Assessment/
+|       |-- Synthetic Data Generation, Forecasting, and Statistical Validation Results/
+|       |-- Robustness Analysis of CFT-VAE Augmentation Performance/
+|       |-- Distributional Analysis of Augmentation Gains/
+|       |-- Computational Performance and Scalability Analysis/
+|       `-- Ablation Analysis of the Conditioning Mechanism/
+|
+|-- .gitattributes
+|-- .gitignore
+|-- LICENSE
+|-- README.md
+`-- requirements.txt
 
 ## 3. Installation
 
