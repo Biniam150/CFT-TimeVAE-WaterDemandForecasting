@@ -14,8 +14,14 @@ The Conditional Forecasting TimeVAE (CFT-VAE) framework is designed for:
 - Assessing synthetic-data fidelity, robustness, and statistical significance
 
 The experimental pipeline supports 25 user-aggregation levels and multiple randomized trials. Forecasting performance is evaluated using six models:
+- Random Forest
+- XGBoost
+- Gradient Boosting
+- Support Vector Machine (SVM)
+- Long Short-Term Memory network (LSTM)
+- Temporal Convolutional Network (TCN)
 
-### Data Provenance and Licensing
+## 2.Data Provenance and Licensing
 
 - **Original dataset:** `swm_trialA_1K.csv`
 - **Original dataset DOI:** [10.26255/healyinb-b1xl](https://doi.org/10.26255/healyinb-b1xl)
@@ -25,7 +31,7 @@ The experimental pipeline supports 25 user-aggregation levels and multiple rando
 
 `Good_Data.csv` is a quality-controlled derivative of the original DAIAD smart-meter dataset. The original dataset remains the authoritative source and is not claimed as a dataset created by the authors of this repository.
   
-## 2. Repository Structure
+## 3. Repository Structure
 ```text
 CFT-TimeVAE-WaterDemandForecasting/
 |
@@ -92,7 +98,7 @@ CFT-TimeVAE-WaterDemandForecasting/
 `-- requirements.txt
 ```
 
-## 3. Installation
+## 4. Installation
 
 ### 1. Install and configure Git LFS
 
@@ -112,7 +118,7 @@ git lfs pull
 ```powershell
 pip install -r requirements.txt
 ```
-## 4. Running the Full Experimental Pipeline
+## 5. Running the Full Experimental Pipeline
 
 The complete experimental workflow consists of the following stages:
 
@@ -132,7 +138,7 @@ Detailed commands, input requirements, expected output files, and troubleshootin
 
 Users should follow the stages in the manual sequentially. Aggregation and temporal preprocessing must be completed first because the resulting datasets are shared by the CFT-VAE and TimeVAE pipelines.
 
-## 5: License
+## 6: License
 MIT License.
 
 
