@@ -1,6 +1,6 @@
 # Conditional Forecasting TimeVAE (CFT-VAE) for Water Demand Forecasting
 
-This repository provides a condtional TimeVAE-based framework for generating synthetic water-demand sequences and evaluating their usefulness for demand forecasting across multiple user-aggregation levels. It includes data preprocessing, conditional feature engineering, CFT-VAE and TimeVAE training, synthetic data generation, forecasting experiments, and statistical validation.
+This repository provides a conditional TimeVAE-based framework for generating synthetic water-demand sequences and evaluating their usefulness for demand forecasting across multiple user-aggregation levels. It includes data preprocessing, conditional feature engineering, CFT-VAE and TimeVAE training, synthetic data generation, forecasting experiments, and statistical validation.
 
 ## 1. Overview
 
@@ -117,7 +117,7 @@ The complete experimental workflow consists of the following stages:
 2. Create the temporal training, validation, and testing datasets.
 3. Train CFT-VAE and generate conditional synthetic water-demand data.
 4. Evaluate CFT-VAE using four classical forecasting models, LSTM, and TCN.
-5. Train the original TimeVAE and generate unconditional synthetic water-demand data.
+5. Train the standard multivariate TimeVAE and generate synthetic water-demand data without explicit conditional separation or forecasting-oriented supervision.
 6. Evaluate TimeVAE using four classical forecasting models, LSTM, and TCN.
 7. Compare real-only, synthetic-only, and augmented forecasting scenarios.
 8. Conduct fidelity, statistical-significance, robustness, scalability, and ablation analyses.
