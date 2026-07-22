@@ -15,13 +15,15 @@ The Conditional Forecasting TimeVAE (CFT-VAE) framework is designed for:
 
 The experimental pipeline supports 25 user-aggregation levels and multiple randomized trials. Forecasting performance is evaluated using six models:
 
-- Random Forest - XGBoost - Gradient Boosting- Support Vector Machine (SVM)
-- Long Short-Term Memory network (LSTM), - Temporal Convolutional Network (TCN)
+### Data Provenance and Licensing
 
-- Original dataset DOI: 10.26255/healyinb-b1xl (swm_trialA_1K.csv)
--	Original dataset licence: CC BY-SA 4.0
--	Code licence: MIT
--	Good_Data.csv as a processed derivative
+- **Original dataset:** `swm_trialA_1K.csv`
+- **Original dataset DOI:** [10.26255/healyinb-b1xl](https://doi.org/10.26255/healyinb-b1xl)
+- **Original dataset licence:** CC BY-SA 4.0
+- **Processed derivative:** `Good_Data.csv`
+- **Source-code licence:** MIT
+
+`Good_Data.csv` is a quality-controlled derivative of the original DAIAD smart-meter dataset. The original dataset remains the authoritative source and is not claimed as a dataset created by the authors of this repository.
   
 ## 2. Repository Structure
 ```text
