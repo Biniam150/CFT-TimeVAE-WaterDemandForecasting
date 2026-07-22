@@ -15,13 +15,14 @@ The Conditional Forecasting TimeVAE (CFT-VAE) framework is designed for:
 
 The experimental pipeline supports 25 user-aggregation levels and multiple randomized trials. Forecasting performance is evaluated using six models:
 
-- Random Forest
-- XGBoost
-- Gradient Boosting
-- Support Vector Machine (SVM)
-- Long Short-Term Memory network (LSTM)
-- Temporal Convolutional Network (TCN)
-- 
+- Random Forest - XGBoost - Gradient Boosting- Support Vector Machine (SVM)
+- Long Short-Term Memory network (LSTM), - Temporal Convolutional Network (TCN)
+
+Original dataset DOI: 10.26255/healyinb-b1xl (swm_trialA_1K.csv)
+Original dataset licence: CC BY-SA 4.0
+Code licence: MIT
+Good_Data.csv as a processed derivative
+  
 ## 2. Repository Structure
 ```text
 CFT-TimeVAE-WaterDemandForecasting/
